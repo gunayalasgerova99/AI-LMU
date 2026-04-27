@@ -237,7 +237,7 @@ def logout():
     return redirect("/")
 
     
-    @app.route("/download")
+@app.route("/download")
 def download():
     import csv
     from flask import Response
@@ -259,6 +259,6 @@ def download():
     return Response(generate(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment;filename=data.csv"})
                     
-                    if __name__ == "__main__":
+if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=10000)
