@@ -240,3 +240,25 @@ def logout():
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=10000)
+    
+    @app.route("/download")
+def download():
+    import csv
+    from flask import Response
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT participant_id, question, answer_letter, answer_text FROM responses")
+    rows = cur.fetchall()
+
+    def generate():
+        yield "participant_id,question,answer_letter,answer_text\n"
+        for row in rows:
+            yield ",".join([str(x).replace(",", " ") for x in row]) + "\n"
+
+    cur.close()
+    conn.close()
+
+    return Response(generate(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment;filename=data.csv"})
