@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Walking AI Study Chat</title>
+</head>
+<body>
+
+<h2>Participant: {{ user }}</h2>
+
+<div id="chat" style="border:1px solid black; height:400px; overflow:auto; padding:10px; white-space:pre-wrap;"></div>
+
+<br>
+
+<input id="message" style="width:70%;" placeholder="Type your answer...">
+<button onclick="sendMessage()">Send</button>
+
+<br><br>
+<a href="/logout">Logout</a>
+
+<script>
+window.onload = async function() {
+    const response = await fetch("/start");
+    const data = await response.json();
+    addMessage("AI", data.reply);
+}
+
+async function sendMessage() {
+    const input = document.getElementById("message");
+    const text = input.value;
+
+    if (text.trim() === "") return;
+
+    addMessage("You", text);
+    input.value = "";
+
+    const response = await fetch("/send", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({message: text})
+    });
+
+    const data = await response.json();
+    addMessage("AI", data.reply);
+}
+
+function addMessage(sender, text) {
+    const chat = document.getElementById("chat");
+    chat.innerHTML += "<p><b>" + sender + ":</b> " + text + "</p>";
+    chat.scrollTop = chat.scrollHeight;
+}
+</script>
+
+</body>
+</html>

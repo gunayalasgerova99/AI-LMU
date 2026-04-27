@@ -1,0 +1,215 @@
+from flask import Flask, render_template, request, redirect, session, jsonify
+import csv
+import os
+
+app = Flask(__name__)
+app.secret_key = "secret123"
+
+users = {
+    "P001": "lmu001",
+    "P002": "lmu002",
+    "P003": "lmu003",
+    "P004": "lmu004",
+    "P005": "lmu005",
+    "P006": "lmu006",
+    "P007": "lmu007",
+    "P008": "lmu008",
+    "P009": "lmu009",
+    "P010": "lmu010"
+}
+
+QUESTIONS = [
+    "1. Going to a theme park",
+    "2. Experiencing a car crash",
+    "3. Going to a swimming pool and that your swimming trunks fell off",
+    "4. Being hospitalized and undergoing surgery",
+    "5. Having extracted a tooth by a dentist",
+    "6. Building camps with friends",
+    "7. Going ice skating on natural ice in the winter",
+    "8. Going camping with your family in tents",
+    "9. Falling off your bike as a child and wounded yourself",
+    "10. Having a verbal fight with your friends at school",
+    "11. Going on a hot air balloon ride",
+    "12. Going to Disneyland Paris and meeting your favorite figure",
+    "13. Breaking something valuable in a store",
+    "14. Going to the doctor to suture a wound",
+    "15. Falling of the trampoline and broke something",
+    "16. A plaster of a broken arm of leg written full by classmates, family, etc.",
+    "17. Going on skiing holiday",
+    "18. Experiencing a move to another place",
+    "19. Going to a fair and going into an attraction",
+    "20. Going to a national themepark"
+]
+
+SUPPORT_PHRASES = [
+    "Thank you, let’s continue.",
+    "Got it, we’ll go to the next one.",
+    "Thanks, you’re doing well.",
+    "Thank you for your answer.",
+    "Okay, let’s continue with the next item.",
+    "Thanks, we can move on.",
+    "Got it, thank you.",
+    "Thank you, let’s keep going.",
+    "Thanks, next one.",
+    "Okay, thank you for responding.",
+    "Got it, we’ll continue.",
+    "Thank you, you’re doing fine.",
+    "Thanks, let’s move to the next item.",
+    "Okay, we’ll go on.",
+    "Thank you, next question.",
+    "Got it, let’s continue.",
+    "Thanks, we’re moving along well.",
+    "Okay, thank you.",
+    "Thank you, almost there.",
+    "Thanks for your answer."
+]
+
+ANSWER_MAP = {
+    "A": "0 times",
+    "B": "1 time",
+    "C": "2 times",
+    "D": "3 or more times"
+}
+
+user_progress = {}
+user_started = {}
+
+
+def save_response(user, question, answer):
+    file_exists = os.path.isfile("data.csv")
+
+    with open("data.csv", mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+
+        if not file_exists:
+            writer.writerow(["participant_id", "question", "answer_letter", "answer_text"])
+
+        answer_upper = answer.strip().upper()
+        answer_text = ANSWER_MAP.get(answer_upper, answer)
+
+        writer.writerow([user, question, answer_upper, answer_text])
+
+
+def question_text(question):
+    return (
+        "Please indicate how many times this happened:\n"
+        + question
+        + "\n\nA = 0 times\nB = 1 time\nC = 2 times\nD = 3 or more times"
+    )
+
+
+@app.route("/", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        user = request.form["user"].strip()
+        pw = request.form["pw"].strip()
+
+        if user in users and users[user] == pw:
+            session["user"] = user
+            user_progress[user] = 0
+            user_started[user] = False
+            return redirect("/chat")
+        else:
+            return "Wrong login"
+
+    return render_template("login.html")
+
+
+@app.route("/chat")
+def chat():
+    if "user" not in session:
+        return redirect("/")
+    return render_template("chat.html", user=session["user"])
+
+
+@app.route("/start")
+def start():
+    if "user" not in session:
+        return jsonify({"reply": "Please log in first."})
+
+    user = session["user"]
+    user_progress[user] = 0
+    user_started[user] = False
+
+    intro = """Hi, and welcome to this first part of the study 🙂
+
+I’ll guide you through a short set of questions about events that may have happened during your childhood.
+
+There are no right or wrong answers — just go with what feels accurate to you.
+
+For each event, please answer with one letter:
+A = 0 times
+B = 1 time
+C = 2 times
+D = 3 or more times
+
+Take your time, and feel free to stop at any point if you wish.
+
+Whenever you're ready, type “ready” and we’ll begin."""
+
+    return jsonify({"reply": intro})
+
+
+@app.route("/send", methods=["POST"])
+def send():
+    if "user" not in session:
+        return jsonify({"reply": "Please log in first."})
+
+    user = session["user"]
+    user_message = request.json["message"].strip()
+
+    if user not in user_progress:
+        user_progress[user] = 0
+
+    if user not in user_started:
+        user_started[user] = False
+
+    if user_started[user] is False:
+        user_started[user] = True
+        first_question = QUESTIONS[0]
+
+        return jsonify({
+            "reply": "Great, thank you — we’ll start now.\n\n" + question_text(first_question)
+        })
+
+    current_q = user_progress[user]
+    answer_upper = user_message.upper()
+
+    if answer_upper not in ANSWER_MAP:
+        return jsonify({
+            "reply": "Please answer with one letter only: A, B, C, or D."
+        })
+
+    if current_q < len(QUESTIONS):
+        save_response(user, QUESTIONS[current_q], answer_upper)
+
+    user_progress[user] += 1
+    next_q = user_progress[user]
+
+    if next_q < len(QUESTIONS):
+        next_question = QUESTIONS[next_q]
+
+        # Each question gets its own fixed support phrase
+        support = SUPPORT_PHRASES[current_q]
+
+        full_reply = support + "\n\n" + question_text(next_question)
+    else:
+        full_reply = """Thank you very much for taking part in this first part of the study.
+
+We really appreciate your time and responses.
+
+Please remember not to discuss these events with others, as it may influence the study.
+
+Thank you again."""
+
+    return jsonify({"reply": full_reply})
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect("/")
+
+
+if __name__ == "__main__":
+    app.run(debug=True)
