@@ -1,6 +1,8 @@
-from flask import Flask, render_template, request, redirect, session, jsonify
+from flask import Flask, render_template, request, redirect, session, jsonify, Response
 import os
 import psycopg2
+import csv
+import io
 
 app = Flask(__name__)
 app.secret_key = "secret123"
@@ -217,7 +219,6 @@ def send():
     if next_q < len(QUESTIONS):
         next_question = QUESTIONS[next_q]
         support = SUPPORT_PHRASES[current_q]
-
         full_reply = support + "\n\n" + question_text(next_question)
     else:
         full_reply = """Thank you very much for taking part in this first part of the study.
@@ -231,34 +232,39 @@ Thank you again."""
     return jsonify({"reply": full_reply})
 
 
+@app.route("/download")
+def download():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        SELECT participant_id, question, answer_letter, answer_text, created_at
+        FROM responses
+        ORDER BY created_at;
+    """)
+    rows = cur.fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow(["participant_id", "question", "answer_letter", "answer_text", "created_at"])
+    writer.writerows(rows)
+
+    cur.close()
+    conn.close()
+
+    return Response(
+        output.getvalue(),
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment;filename=data.csv"}
+    )
+
+
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/")
 
-    
-@app.route("/download")
-def download():
-    import csv
-    from flask import Response
 
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("SELECT participant_id, question, answer_letter, answer_text FROM responses")
-    rows = cur.fetchall()
-
-    def generate():
-        yield "participant_id,question,answer_letter,answer_text\n"
-        for row in rows:
-            yield ",".join([str(x).replace(",", " ") for x in row]) + "\n"
-
-    cur.close()
-    conn.close()
-
-    return Response(generate(), mimetype="text/csv",
-                    headers={"Content-Disposition": "attachment;filename=data.csv"})
-                    
 if __name__ == "__main__":
     init_db()
     app.run(host="0.0.0.0", port=10000)
