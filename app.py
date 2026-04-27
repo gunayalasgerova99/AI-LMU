@@ -1,9 +1,11 @@
 from flask import Flask, render_template, request, redirect, session, jsonify
-import csv
 import os
+import psycopg2
 
 app = Flask(__name__)
 app.secret_key = "secret123"
+
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 users = {
     "P001": "lmu001",
@@ -75,19 +77,45 @@ user_progress = {}
 user_started = {}
 
 
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
+
+
+def init_db():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS responses (
+            id SERIAL PRIMARY KEY,
+            participant_id TEXT,
+            question TEXT,
+            answer_letter TEXT,
+            answer_text TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+
 def save_response(user, question, answer):
-    file_exists = os.path.isfile("data.csv")
+    conn = get_connection()
+    cur = conn.cursor()
 
-    with open("data.csv", mode="a", newline="", encoding="utf-8") as file:
-        writer = csv.writer(file)
+    answer_upper = answer.strip().upper()
+    answer_text = ANSWER_MAP.get(answer_upper, answer_upper)
 
-        if not file_exists:
-            writer.writerow(["participant_id", "question", "answer_letter", "answer_text"])
+    cur.execute("""
+        INSERT INTO responses (participant_id, question, answer_letter, answer_text)
+        VALUES (%s, %s, %s, %s);
+    """, (user, question, answer_upper, answer_text))
 
-        answer_upper = answer.strip().upper()
-        answer_text = ANSWER_MAP.get(answer_upper, answer)
-
-        writer.writerow([user, question, answer_upper, answer_text])
+    conn.commit()
+    cur.close()
+    conn.close()
 
 
 def question_text(question):
@@ -188,8 +216,6 @@ def send():
 
     if next_q < len(QUESTIONS):
         next_question = QUESTIONS[next_q]
-
-        # Each question gets its own fixed support phrase
         support = SUPPORT_PHRASES[current_q]
 
         full_reply = support + "\n\n" + question_text(next_question)
@@ -212,4 +238,5 @@ def logout():
 
 
 if __name__ == "__main__":
+    init_db()
     app.run(host="0.0.0.0", port=10000)
